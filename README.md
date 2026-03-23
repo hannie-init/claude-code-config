@@ -38,10 +38,27 @@ Claude Code 개인 설정 파일 모음입니다.
 
 | 스킬 | 설명 | 트리거 |
 |------|------|--------|
-| `add-feature` | feature-developer → test-writer → validator → code-reviewer 순서로 Spring Boot 기능 개발 | `add-feature`, `기능 추가` |
+| `add-feature` | feature-developer → test-writer → validator → code-reviewer 순서로 Spring Boot 기능 개발. validator 실패 시 에러 유형별 분기 처리 | `add-feature`, `기능 추가` |
 | `convert-api-docs` | 엑셀 단위서비스 명세 텍스트를 api-spec.md / screen-flow.md 로 변환 | `단위서비스 명세 변환`, `api-spec 생성` |
 | `korean-commit` | 한국어 커밋 메시지 작성 + push 옵션 제공 | `커밋해줘`, `/korean-commit` |
 | `review-code` | Spring Boot 코드 리뷰 (Critical / Warning / Suggestion 분류) | `코드 리뷰`, `review` |
+
+## add-feature 실패 처리 플로우
+
+`add-feature` 스킬은 validator 실패 시 에러 유형과 발생 위치에 따라 담당 에이전트에게 수정을 위임합니다.
+컴파일 에러 카운터와 테스트 실패 카운터는 독립적으로 관리됩니다.
+
+```
+validator 실패
+│
+├─ 컴파일 에러 (최대 4회, 4회 초과 시 직접 확인 권유 메시지 출력 후 중단)
+│   ├─ src/main/java/ → feature-developer 수정 → validator 재실행  [카운터 +1]
+│   └─ src/test/java/ → test-writer 수정     → validator 재실행  [카운터 +1]
+│
+└─ 테스트 실패 (최대 2회, 2회 초과 시 에러 리포트 출력 후 중단)
+    ├─ 테스트 코드 문제 → test-writer 수정        → validator 재실행  [카운터 +1]
+    └─ 구현 로직 문제  → feature-developer 수정   → validator 재실행  [카운터 +1]
+```
 
 ## 설치
 

@@ -1,0 +1,50 @@
+# ===========================
+# IntelliJ IDEA
+# ===========================
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ===========================
+# macOS
+# ===========================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ===========================
+# Java / Spring / Gradle
+# ===========================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+.gradle/
+build/
+out/
+target/
+
+# ===========================
+# 환경 설정 (민감 정보)
+# ===========================
+.env
+.env.*
+application-local.yml
+application-local.properties
+application-secret.yml
+**/secret*.yml
+**/credentials.*
+**/secrets.*
+
+# ===========================
+# Claude Code 로컬 설정
+# ===========================
+.claude/settings.local.json
+
+# ===========================
+# 로그
+# ===========================
+*.log
+logs/

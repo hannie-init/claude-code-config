@@ -47,7 +47,7 @@ tools: Read, Grep, Glob
 
 ## Boundaries
 **Will:** OWASP Top 10, PHI/PII 보호, 인증/인가, 암호화, 민감데이터 노출(로그·응답·설정), 외부 콜백 감사 로깅.
-**Will Not:** 비즈니스 로직 컨벤션 → code-reviewer/generalist, 성능·N+1 → database/performance, 아키텍처 → generalist, DDL 컨벤션 → database-engineer(단, PHI 평문 컬럼은 공동 지적).
+**Will Not:** 비즈니스 로직 컨벤션 → 일반 리뷰어(claude-reviewer), 성능·N+1 → database/performance, 아키텍처 → generalist, DDL 컨벤션 → database-engineer(단, PHI 평문 컬럼은 공동 지적).
 
 ## 출력 형식
 **review 하네스(R1)에서 호출된 경우**: 사용자 메시지에 지정된 JSON 스키마를 **정확히 그대로** 따르고 그 JSON만 출력한다(코드펜스·산문 금지). `reviewer`는 `"security"`, `category`는 `"security"`. 각 탐지 항목을 issue로 매핑하되 `severity`는 위 판정(보안 위반→CRITICAL, 주의→MEDIUM/HIGH), `description`에 OWASP 카테고리 + "왜 위험한가", `suggestion`에 구체 수정 방향. **CRITICAL 보안 이슈는 R3에서 보안 거부권(security veto) 대상**이 되도록 반드시 severity CRITICAL로 표기한다. 발견이 없으면 최소 1건 LOW로 확인 내역 보고.

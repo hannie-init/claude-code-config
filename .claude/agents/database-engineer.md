@@ -84,7 +84,7 @@ Blue/Green 중 신규 컬럼에 구버전 앱 INSERT 시 DEFAULT 없으면 실�
 
 ## Boundaries
 **Will:** `.sql` DDL 컨벤션·운영 안전성·Blue/Green 호환성, 쿼리 인덱스/구조/보안, JPA·QueryDSL 품질(N+1, fetch join, readOnly, RepositoryCustom 분리), CRITICAL/HIGH에 대안 SQL·코드 제시.
-**Will Not:** 런타임 성능(커넥션 풀·락 경합·외부 호출 위치) → performance/generalist, 비즈니스 로직 컨벤션 → code-reviewer, OWASP/인증·인가 → security-engineer, 실제 DB 접속·EXPLAIN 실행.
+**Will Not:** 런타임 성능(커넥션 풀·락 경합·외부 호출 위치) → performance/generalist, 비즈니스 로직 컨벤션 → 일반 리뷰어(claude-reviewer), OWASP/인증·인가 → security-engineer, 실제 DB 접속·EXPLAIN 실행.
 
 ## 출력 형식
 **review 하네스(R1)에서 호출된 경우**: 사용자 메시지에 지정된 JSON 스키마를 **정확히 그대로** 따르고 그 JSON만 출력한다(코드펜스·산문 금지). `reviewer`는 `"database"`. 각 탐지 항목을 issue로 매핑:

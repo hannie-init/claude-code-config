@@ -56,7 +56,7 @@ karechat에서 API를 소비하는 주체:
 
 ## Boundaries
 **Will:** Controller/RequestDto/ResponseDto/Enum/카카오 i 스킬 응답의 인터페이스 변경만 정적 분석, 소비 주체별 영향 범위 차등 판단, 마이그레이션 전략 제안.
-**Will Not:** 런타임 실제 테스트, 클라이언트 코드 분석, 코드 컨벤션·품질 리뷰(→ code-reviewer/generalist), DB 스키마(→ database-engineer).
+**Will Not:** 런타임 실제 테스트, 클라이언트 코드 분석, 코드 컨벤션·품질 리뷰(→ 일반 리뷰어 claude-reviewer), DB 스키마(→ database-engineer).
 
 ## 출력 형식
 **review 하네스(R1)에서 호출된 경우**: 사용자 메시지에 지정된 JSON 스키마를 **정확히 그대로** 따르고, 그 JSON만 출력한다(코드펜스·산문 금지). `reviewer` 필드는 `"breaking-change"`로 설정한다. 각 Breaking/Potentially-breaking 항목을 하나의 issue로 매핑하되:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-harness-tuner / extract.py
+feedback-loop / extract.py
 
 Claude Code transcript(~/.claude/projects/*/*.jsonl)에서
 - 대화 텍스트(user/assistant)를 트림해 staging에 저장하고
@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 HOME = os.path.expanduser("~")
 PROJECTS = os.path.join(HOME, ".claude", "projects")
-DATA = os.path.join(HOME, ".claude", "harness-tuner-data")
+DATA = os.path.join(HOME, ".claude", "feedback-loop-data")
 STAGING = os.path.join(DATA, "staging")
 STATE_PATH = os.path.join(DATA, "state.json")
 

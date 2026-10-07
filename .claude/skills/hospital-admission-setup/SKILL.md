@@ -34,6 +34,16 @@ description: |
 | `PARK_URL` | 주차 안내 URL | `hsp_prop` (skill DB, URL 입력 필요) |
 | `MEMBER_EXPD` | 입원 확인 활성화 | `svc_hsp_mst.hsptlz_expd_use_yn` (UPDATE, member DB) |
 | `MEMBER_LVG` | 입원생활 안내 활성화 | `svc_hsp_mst.hsptlz_lvng_use_yn` (UPDATE, member DB) |
+| `CONSENT_HSPTLZ` | **입원/퇴원 동의 데이터** | `stte_ccrc`(1) + `stte_ccrc_cnte`(8) + `dtl_mst`(2) = **11행** (skill DB) |
+| `DETAIL_INFO` | 입원 정보 상세 확인 | `hsp_mst.hsptlz_detail_info_yn='Y'` + `bed_tp='DAY'` (UPDATE, skill DB) |
+| `DIET` | 식단 관리 | `hsp_mst.diet_use_yn` (UPDATE, skill DB) |
+| `REMOTE_CONSULT` | 화상 상담 | `hsp_mst.remote_consultation_use_yn` (UPDATE, skill DB) |
+| `CERTIFICATES` | 제증명 발급 신청 | `hsp_prop.CERTIFICATES_USE_YN` (skill DB) |
+| `MEMBER_ARRIVAL` | 입원 도착 확인(체크인) | `svc_hsp_mst.hsptlz_arrival_use_yn` (UPDATE, member DB) |
+| `MEMBER_HOPE_ROOM` | 희망병실 배정 | `svc_hsp_mst.hsptlz_hope_room_use_yn` (UPDATE, member DB) |
+| `MEMBER_CONSENT_FORM` | 입원 동의서 | `svc_hsp_mst.hsptlz_consent_form_use_yn` (UPDATE, member DB) |
+
+> **입원/퇴원 동의 데이터(`CONSENT_HSPTLZ`)** 는 입원확인·입원생활 도입 시 **필수**다. 3개 테이블에 나눠 저장되며, 하나라도 빠지면 「동의 관리」화면에 항목이 안 뜨거나 '동의 전문 보기'가 깨진다. `stte_ccrc_id=81`은 이 동의의 **고정 상수**(전 병원 공통), `stte_ccrc_hdr`만 병원명이 치환된다. 상세는 `references/schema.md` 참고.
 
 ---
 
@@ -68,13 +78,24 @@ description: |
 **① 기능 선택** — 병원마다 사용하지 않는 기능이 있을 수 있으므로 반드시 확인:
 ```
 세팅할 기능을 선택해주세요 (사용하지 않는 기능은 제외):
+[ ] CONSENT_HSPTLZ     — 입원/퇴원 동의 데이터 (stte_ccrc+cnte+dtl_mst, 입원확인·입원생활 필수)
 [ ] HSP_MST_INFO       — 입원생활 안내 활성화 (hsp_mst.hsptz_info = 'Y')
 [ ] TODAY_SCHEDULE     — 오늘의 일정
 [ ] DOCTOR_INFO        — 주치의 정보보기
 [ ] DISCHARGE_ACTIVATE — 퇴원 안내 활성화
+[ ] DETAIL_INFO        — 입원 정보 상세 확인 (hsp_mst.hsptlz_detail_info_yn='Y' + bed_tp='DAY')
+[ ] DIET               — 식단 관리 (hsp_mst.diet_use_yn = 'Y')
+[ ] REMOTE_CONSULT     — 화상 상담 (hsp_mst.remote_consultation_use_yn = 'Y')
+[ ] CERTIFICATES       — 제증명 발급 신청 (hsp_prop.CERTIFICATES_USE_YN = 'Y')
 [ ] MEMBER_EXPD        — 입원 확인 활성화 (svc_hsp_mst.hsptlz_expd_use_yn = 'Y')
 [ ] MEMBER_LVG         — 입원생활 안내 활성화 (svc_hsp_mst.hsptlz_lvng_use_yn = 'Y')
+[ ] MEMBER_ARRIVAL     — 입원 도착 확인/체크인 (svc_hsp_mst.hsptlz_arrival_use_yn = 'Y')
+[ ] MEMBER_HOPE_ROOM   — 희망병실 배정 (svc_hsp_mst.hsptlz_hope_room_use_yn = 'Y')
+[ ] MEMBER_CONSENT_FORM— 입원 동의서 (svc_hsp_mst.hsptlz_consent_form_use_yn = 'Y')
 ```
+
+> `CONSENT_HSPTLZ`는 동의 전문 보기 URL을 기존 병원 `CCRC_FOOTER_INFO` 행에서 자동 복사한다. 없으면 `--ccrc-dtl-url`로 지정(운영 반영 시 운영 도메인 URL 필요).
+> `DETAIL_INFO`는 `bed_tp='DAY'`를 함께 세팅한다(상세확인 정상 동작 전제). 이미 다른 `bed_tp` 값이 있으면 덮어쓰므로 주의.
 
 **② 필수 DB 값 입력** — 기능 선택과 무관하게 항상 필요한 값:
 ```
@@ -121,15 +142,23 @@ Claude가 결과를 마크다운 표로 변환 후 사용자에게 확인 요청
 문제 발견 시 롤백 후 재시도:
 ```sql
 -- DataGrip에서 실행 (skill DB)
-UPDATE hsp_mst SET hsptz_info = NULL WHERE hsp_id = <ID>;
+UPDATE hsp_mst SET hsptz_info = NULL, hsptlz_detail_info_yn = NULL,
+       diet_use_yn = NULL, remote_consultation_use_yn = NULL WHERE hsp_id = <ID>;
 DELETE FROM hsp_prop WHERE hsp_id = <ID>
-  AND code IN ('HSPTLZ_TODAY_SCHEDULE_MENU_YN', 'HOSPITALIZATION_PRE_GUIDE_URL', 'PARK_GUIDE_URL');
+  AND code IN ('HSPTLZ_TODAY_SCHEDULE_MENU_YN', 'HOSPITALIZATION_PRE_GUIDE_URL', 'PARK_GUIDE_URL', 'CERTIFICATES_USE_YN');
 DELETE FROM dtl_mst WHERE hsp_id = <ID>
   AND grp_cd IN ('HSPTZ_LIVING_MYDOCTOR', 'HSPTZ_LIVING_DISCHARGE');
 
+-- 입원/퇴원 동의 데이터(CONSENT_HSPTLZ) 롤백 — 11행
+DELETE FROM dtl_mst WHERE hsp_id = <ID>
+  AND dtl_cd = 'HSPTZ_LVNG_CCRC_ITEM_01' AND grp_cd IN ('CCRC_ITEM_MGMT', 'CCRC_FOOTER_INFO');
+DELETE FROM stte_ccrc_cnte WHERE hsp_id = <ID> AND stte_ccrc_id = 81;
+DELETE FROM stte_ccrc      WHERE hsp_id = <ID> AND stte_ccrc_id = 81 AND dtl_cd = 'HSPTZ_LVNG_CCRC_ITEM_01';
+
 -- member DB
-UPDATE svc_hsp_mst SET hsptlz_expd_use_yn = NULL WHERE hsp_id = <ID>;
-UPDATE svc_hsp_mst SET hsptlz_lvng_use_yn = NULL WHERE hsp_id = <ID>;
+UPDATE svc_hsp_mst SET hsptlz_expd_use_yn = NULL, hsptlz_lvng_use_yn = NULL,
+       hsptlz_arrival_use_yn = NULL, hsptlz_hope_room_use_yn = NULL,
+       hsptlz_consent_form_use_yn = NULL WHERE hsp_id = <ID>;
 ```
 
 삭제 확인 후 3단계(dry-run)부터 재실행.
@@ -149,6 +178,8 @@ python3 ~/.claude/skills/hospital-admission-setup/scripts/setup_admission.py \
 | 기능 | 상태 |
 |------|------|
 | 입원 확인 | ✅ Y / ❌ 미설정 (svc_hsp_mst, member DB) |
+| ㄴ 입원 정보 상세 확인 (hsp_mst) | ✅ Y / ❌ 미설정 + bed_tp 값 |
+| **입원/퇴원 동의 데이터** | ✅ 완비 (stte_ccrc 1/1, cnte 8/8, dtl_mst 2/2) / ❌ 불완전 |
 | [입원생활 안내] | |
 | ㄴ 입원생활 안내 활성화 (skill DB) | ✅ Y / ❌ 미설정 (hsp_mst) |
 | ㄴ 입원생활 안내 활성화 (member DB) | ✅ Y / ❌ 미설정 (svc_hsp_mst) |
@@ -159,6 +190,8 @@ python3 ~/.claude/skills/hospital-admission-setup/scripts/setup_admission.py \
 | ㄴ 안전생활 안내보기 (콘텐츠) | ✅ 활성화 (카드 N장) / ❌ 미설정 |
 | 퇴원 안내 활성화 | ✅ 활성화 / ❌ 미설정 |
 | 퇴원 안내 (콘텐츠) | ✅ 활성화 (카드 N장) / ❌ 미설정 |
+| 식단 관리 / 화상 상담 / 제증명 | ✅ Y / ❌ 미설정 (hsp_mst, hsp_prop) |
+| 입원 도착·체크인 / 희망병실 / 입원 동의서 | ✅ Y / ❌ 미설정 (svc_hsp_mst, member DB) |
 
 ### 필수 DB 값
 | 항목 | 값 |
@@ -209,3 +242,4 @@ pip install pymysql python-dotenv
 |---|---|
 | 2026-06-09 | 변경 이력 섹션 추가 |
 | 2026-07-03 | `.env` 직접 열람 금지 안내 추가 — 스크립트가 `.env`를 로드하므로 Claude가 `.env`를 Read/grep하지 않고, prod 여부는 사용자에게 확인(권한 거부 루프 제거) |
+| 2026-09-04 | 입원/퇴원 **동의 데이터**(`CONSENT_HSPTLZ`: stte_ccrc+stte_ccrc_cnte+dtl_mst 11행) 및 기능 플래그 추가 — `DETAIL_INFO`(상세확인+bed_tp), `DIET`, `REMOTE_CONSULT`, `CERTIFICATES`, `MEMBER_ARRIVAL`, `MEMBER_HOPE_ROOM`, `MEMBER_CONSENT_FORM`. `--query` 현황에 동의 완전성·신규 항목 반영. (노션 「케어챗 입원 기본 기능 DB 세팅」 대조) |

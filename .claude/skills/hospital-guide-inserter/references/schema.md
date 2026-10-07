@@ -123,12 +123,58 @@ create table hsp_guid_mst_dtl
 
 ## 엑셀 → DB 행 구조 (3행 블록)
 
-각 병원 데이터는 3행씩 묶음:
-- **행 1 (내용행)**: A=병원명, B=무시, C~L=카드 본문(guid_desc)
-- **행 2 (버튼행)**: C~L=버튼 정보 (`-` or `[버튼명]\nURL` or `[버튼명]\n블록 호출...`)
-- **행 3 (글자수행)**: 숫자만 있음 → 무시
+각 병원 데이터는 3행씩 묶음(내용행/버튼행/글자수행). **컬럼 구조는 콘텐츠(grp_cd)에 따라 다르다.**
 
-헤더 행(A열="병원") 및 기획안 행은 건너뜀.
+### ⬇️ 입원생활 · 편의시설 · 안전생활 (HSPTLZ_LIVING_GUIDE / CONVENIENCE_UTILITY / HSPTZ_LIVING_SAFETY_MANAGEMENT)
+
+| 컬럼 | 내용행(1) | 버튼행(2) | 저장 위치 |
+|---|---|---|---|
+| A | 병원명 | (빈칸) | 병원 매칭용(미저장) |
+| **B** | 인사말(무시) | **버튼1 "상세 내용 보기" URL** | `dtl_mst` (`*_DETAIL_CONTENT_LINK`) |
+| **C** | (빈칸) | **버튼2 "안내 영상 보기" URL** | `dtl_mst` (`*_YOUTUBE_LINK`) |
+| **D~** | 카드 본문(guid_desc) | 카드별 버튼 | `hsp_guid_mst(_dtl)` |
+
+> **카드는 D열부터.** B·C의 헤더 버튼(상세/영상)은 **카드가 아니라 `dtl_mst`** 에 들어간다 → `insert_guide.py --insert-links`.
+> 카드 본문/카드버튼만 `hsp_guid_mst(_dtl)` INSERT 대상(엑셀 INSERT 워크플로우).
+
+### ⬇️ 퇴원 안내 (DISCHARGE_GUIDE)
+
+| 컬럼 | 내용행(1) | 버튼행(2) | 저장 위치 |
+|---|---|---|---|
+| A | 병원명 | (빈칸) | 병원 매칭용(미저장) |
+| **B** | 인사말(무시) | **버튼1 URL** | `dtl_mst` |
+| **C~** | 카드 본문 | 카드별 버튼 | `hsp_guid_mst(_dtl)` |
+
+- **행 3 (글자수행)**: 숫자만 있음 → 무시
+- 헤더 행(A열="병원") 및 기획안 행은 건너뜀.
+- 카드는 캐러셀 10장 × outputs 3 = **최대 30장** (파서가 D/C열부터 최대 30장 파싱).
+
+### 인사말(헤더) 버튼 → `dtl_mst` 매핑
+
+URL은 **`dtl_cd_nm`** 에 저장(라벨은 앱이 dtl_cd로 렌더링). `dtl_expl=''`, `dtl_cd_seq=1`, `use_yn='Y'`. PK=(grp_cd, dtl_cd, hsp_id).
+
+| grp_cd | 상세 보기 dtl_cd | 안내 영상 보기 dtl_cd |
+|---|---|---|
+| HSPTLZ_LIVING_GUIDE | `GUIDE_INFO_DETAIL_CONTENT_LINK` | `GUIDE_INFO_YOUTUBE_LINK` |
+| HSPTZ_LIVING_SAFETY_MANAGEMENT | `SAFETY_MANAGEMENT_DETAIL_CONTENT_LINK` | `SAFETY_MANAGEMENT_YOUTUBE_LINK` |
+| CONVENIENCE_UTILITY | `CONVENIENCE_UTILITY_DETAIL_CONTENT_LINK` | `CONVENIENCE_UTILITY_YOUTUBE_LINK` |
+
+> ⚠️ **퇴원 안내(DISCHARGE_GUIDE)는 규칙이 다르다.** 헤더 버튼(예: 퇴원 안내 영상 신청)은
+> - grp_cd = **`HSPTZ_LIVING_DISCHARGE`** (카드 grp_cd `DISCHARGE_GUIDE`와 다름!), dtl_cd = **`HSPTZ_LIVING_DISCHARGE_INFO`**
+> - URL은 **`dtl_expl`** 에 저장 (다른 기능은 `dtl_cd_nm`).
+> - 이 행은 **퇴원 안내 활성화(hospital-admission-setup의 DISCHARGE_ACTIVATE)** 가 이미 만든 행과 동일 → INSERT 아닌 **UPDATE**.
+> - `insert_guide.py --update-dtl --hsp-id <ID> --dtl-grp HSPTZ_LIVING_DISCHARGE --dtl-code HSPTZ_LIVING_DISCHARGE_INFO --dtl-expl "https://..."`
+
+조회/삽입:
+```bash
+# 헤더 버튼 조회
+insert_guide.py --query-links --hsp-id <ID> [--grp-cd <G>]
+# 헤더 버튼 INSERT (dtl_mst)
+insert_guide.py --insert-links --hsp-id <ID> --grp-cd <G> \
+  --detail-url "https://..." [--youtube-url "https://..."]
+# 잘못 들어간 카드 버튼 삭제 (hsp_guid_mst_dtl)
+insert_guide.py --delete-button --hsp-id <ID> --grp-cd <G> --guid-cd <GUID_CD> [--dtl-cd BUTTON_1]
+```
 
 ### 버튼 파싱 규칙
 ```

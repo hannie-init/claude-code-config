@@ -44,6 +44,25 @@ GRP_CONFIGS = {
     "HSPTZ_LIVING_SAFETY_MANAGEMENT": "안전 생활 알아보기",
 }
 
+# 인사말(헤더) 영역 버튼 — 카드가 아니라 dtl_mst(grp_cd=기능코드)에 저장된다.
+#   dtl_cd_nm = URL, dtl_expl = '', dtl_cd_seq = 1, use_yn = 'Y'
+# 라벨(상세 보기/안내 영상 보기)은 앱에서 dtl_cd 기준으로 렌더링되므로 URL만 저장한다.
+HEADER_LINK_CODES = {
+    "HSPTLZ_LIVING_GUIDE": {
+        "상세 보기":      "GUIDE_INFO_DETAIL_CONTENT_LINK",
+        "안내 영상 보기": "GUIDE_INFO_YOUTUBE_LINK",
+    },
+    "HSPTZ_LIVING_SAFETY_MANAGEMENT": {
+        "상세 보기":      "SAFETY_MANAGEMENT_DETAIL_CONTENT_LINK",
+        "안내 영상 보기": "SAFETY_MANAGEMENT_YOUTUBE_LINK",
+    },
+    "CONVENIENCE_UTILITY": {
+        "상세 보기":      "CONVENIENCE_UTILITY_DETAIL_CONTENT_LINK",
+        "안내 영상 보기": "CONVENIENCE_UTILITY_YOUTUBE_LINK",
+    },
+}
+ALL_HEADER_CODES = sorted({c for m in HEADER_LINK_CODES.values() for c in m.values()})
+
 
 # ── DB 설정 ─────────────────────────────────────────────────────────────────
 
@@ -244,16 +263,17 @@ def parse_hospitals(rows):
         content_row = rows[i]
         button_row = rows[i + 1]
 
-        # C열(index 2)부터 L열(index 11)까지 카드 파싱 (최대 10장)
+        # C열(index 2)부터 카드 파싱 (캐러셀 10장 × outputs 3 = 최대 30장)
         cards = []
-        col_letters = ["C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]
-        for col_idx, col_letter in enumerate(col_letters, start=2):
+        MAX_CARDS = 30
+        for col_idx in range(2, 2 + MAX_CARDS):
             if col_idx >= len(content_row):
                 break
             content = cell_value(content_row[col_idx])
             if not content:
                 continue
 
+            col_letter = col_index_to_letter(col_idx)
             button_cell = cell_value(button_row[col_idx]) if col_idx < len(button_row) else ""
             button_info = parse_button(button_cell, col_letter)
 
@@ -274,6 +294,16 @@ def parse_hospitals(rows):
         i += 3
 
     return hospitals
+
+
+def col_index_to_letter(col_idx):
+    """0-based 컬럼 인덱스를 엑셀 열 문자로 변환 (2→C, 12→M, 26→AA ...)."""
+    n = col_idx + 1
+    s = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
 
 
 def parse_button(cell_text, col_letter):
@@ -460,6 +490,94 @@ def query_hospital(conn, hsp_id, grp_cd):
     print()
 
 
+def query_header_links(conn, hsp_id, grp_cd=None):
+    """dtl_mst의 인사말(헤더) 버튼 링크(상세 보기/안내 영상 보기)를 조회한다.
+
+    grp_cd가 주어지면 해당 기능의 코드만, 없으면 알려진 헤더 코드 전체를 조회한다.
+    """
+    if grp_cd and grp_cd in HEADER_LINK_CODES:
+        codes = sorted(HEADER_LINK_CODES[grp_cd].values())
+    else:
+        codes = ALL_HEADER_CODES
+
+    placeholders = ", ".join(["%s"] * len(codes))
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT grp_cd, dtl_cd, dtl_cd_nm, dtl_expl, dtl_cd_seq, use_yn
+        FROM dtl_mst
+        WHERE hsp_id = %s AND dtl_cd IN ({placeholders})
+        ORDER BY grp_cd, dtl_cd
+        """,
+        (hsp_id, *codes),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+
+    print(f"\n=== hsp_id={hsp_id} 인사말(헤더) 버튼 링크 (dtl_mst) ===\n")
+    if not rows:
+        print("[정보] 조회된 헤더 버튼 링크가 없습니다.\n")
+        return
+
+    for grp, dtl_cd, nm, expl, seq, use_yn in rows:
+        print(f"- grp_cd={grp} | dtl_cd={dtl_cd}")
+        print(f"    dtl_cd_nm(URL)={nm!r} | dtl_expl={expl!r} | seq={seq} | use_yn={use_yn}")
+    print()
+
+
+def build_link_sqls(hsp_id, grp_cd, detail_url=None, youtube_url=None):
+    """dtl_mst 인사말(헤더) 버튼 링크 INSERT SQL 생성. URL은 dtl_cd_nm에 저장."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    codes = HEADER_LINK_CODES.get(grp_cd, {})
+    items = []
+    if detail_url:
+        items.append((codes.get("상세 보기"), detail_url))
+    if youtube_url:
+        items.append((codes.get("안내 영상 보기"), youtube_url))
+    sqls = []
+    for dtl_cd, url in items:
+        if not dtl_cd:
+            continue
+        url_esc = url.replace("'", "''")
+        sql = (
+            "INSERT INTO dtl_mst "
+            "(hsp_id, grp_cd, dtl_cd, dtl_cd_nm, dtl_expl, dtl_cd_seq, use_yn, "
+            "fsr_dtm, fsr_id, lst_mdf_dtm, lst_mdf_id) VALUES "
+            f"({hsp_id}, '{grp_cd}', '{dtl_cd}', '{url_esc}', '', 1, 'Y', "
+            f"'{now}', 0, '{now}', 0);"
+        )
+        sqls.append((dtl_cd, sql))
+    return sqls
+
+
+def check_existing_links(conn, hsp_id, grp_cd, dtl_cds):
+    """dtl_mst PK(grp_cd, dtl_cd, hsp_id) 중복 여부 확인."""
+    cursor = conn.cursor()
+    existing = []
+    for dtl_cd in dtl_cds:
+        cursor.execute(
+            "SELECT COUNT(*) FROM dtl_mst WHERE hsp_id=%s AND grp_cd=%s AND dtl_cd=%s",
+            (hsp_id, grp_cd, dtl_cd),
+        )
+        if cursor.fetchone()[0] > 0:
+            existing.append(dtl_cd)
+    cursor.close()
+    return existing
+
+
+def delete_card_button(conn, hsp_id, grp_cd, guid_cd, dtl_cd):
+    """hsp_guid_mst_dtl에서 카드 버튼 1행 삭제(카드 본문 hsp_guid_mst는 유지)."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM hsp_guid_mst_dtl "
+        "WHERE hsp_id=%s AND grp_cd=%s AND guid_cd=%s AND guid_dtl_cd=%s",
+        (hsp_id, grp_cd, guid_cd, dtl_cd),
+    )
+    n = cursor.rowcount
+    cursor.close()
+    return n
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -477,6 +595,18 @@ def main():
     parser.add_argument("--block-ids", type=str, help='B타입 버튼 블록 ID JSON. 예: \'{"C":"BLK_001"}\'')
     parser.add_argument("--dry-run", action="store_true", help="SQL만 출력, DB 미실행")
     parser.add_argument("--query", action="store_true", help="특정 hsp_id의 안내 현황 조회")
+    parser.add_argument("--query-links", action="store_true", help="특정 hsp_id의 인사말(헤더) 버튼 링크(dtl_mst) 조회")
+    parser.add_argument("--insert-links", action="store_true", help="인사말(헤더) 버튼 링크를 dtl_mst에 INSERT")
+    parser.add_argument("--detail-url", type=str, help="상세 보기 URL (dtl_mst, --insert-links)")
+    parser.add_argument("--youtube-url", type=str, help="안내 영상 보기 URL (dtl_mst, --insert-links)")
+    parser.add_argument("--delete-button", action="store_true", help="hsp_guid_mst_dtl 카드 버튼 1행 삭제")
+    parser.add_argument("--guid-cd", type=str, help="삭제 대상 카드 guid_cd (--delete-button)")
+    parser.add_argument("--dtl-cd", type=str, default="BUTTON_1", help="삭제 대상 버튼 guid_dtl_cd (기본 BUTTON_1)")
+    parser.add_argument("--query-dtl", action="store_true", help="dtl_mst 임의 행 조회 (--dtl-grp, --dtl-code, --hsp-id)")
+    parser.add_argument("--dtl-grp", type=str, help="대상 grp_cd (--query-dtl / --update-dtl)")
+    parser.add_argument("--dtl-code", type=str, help="대상 dtl_cd (--query-dtl / --update-dtl)")
+    parser.add_argument("--update-dtl", action="store_true", help="dtl_mst 기존 행의 dtl_expl UPDATE (--dtl-grp, --dtl-code, --dtl-expl, --hsp-id)")
+    parser.add_argument("--dtl-expl", type=str, help="UPDATE할 dtl_expl 값 (--update-dtl)")
     parser.add_argument(
         "--env",
         default="dev",
@@ -505,11 +635,176 @@ def main():
             conn.close()
         return
 
+    # 헤더 버튼 링크 조회 모드 (dtl_mst)
+    if args.query_links:
+        if not args.hsp_id:
+            print("[오류] --query-links 사용 시 --hsp-id가 필요합니다.")
+            sys.exit(1)
+        db_config = load_db_config(args.env)
+        try:
+            conn = pymysql.connect(**db_config)
+        except Exception as e:
+            print(f"[오류] DB 연결 실패: {e}")
+            sys.exit(1)
+        try:
+            # --grp-cd 를 명시적으로 준 경우만 필터, 아니면 전체 헤더 코드 조회
+            gc = grp_cd if grp_cd in HEADER_LINK_CODES else None
+            query_header_links(conn, args.hsp_id, gc)
+        finally:
+            conn.close()
+        return
+
+    # dtl_mst 임의 행 조회 모드
+    if args.query_dtl:
+        if not args.hsp_id or not args.dtl_grp:
+            print("[오류] --query-dtl 사용 시 --hsp-id, --dtl-grp 가 필요합니다. (--dtl-code 생략 시 그룹 전체 조회)")
+            sys.exit(1)
+        db_config = load_db_config(args.env)
+        try:
+            conn = pymysql.connect(**db_config)
+        except Exception as e:
+            print(f"[오류] DB 연결 실패: {e}")
+            sys.exit(1)
+        try:
+            cur = conn.cursor()
+            if args.dtl_code:
+                cur.execute(
+                    "SELECT dtl_cd, dtl_cd_nm, dtl_expl, dtl_cd_seq, use_yn "
+                    "FROM dtl_mst WHERE hsp_id=%s AND grp_cd=%s AND dtl_cd=%s",
+                    (args.hsp_id, args.dtl_grp, args.dtl_code),
+                )
+            else:
+                cur.execute(
+                    "SELECT dtl_cd, dtl_cd_nm, dtl_expl, dtl_cd_seq, use_yn "
+                    "FROM dtl_mst WHERE hsp_id=%s AND grp_cd=%s ORDER BY dtl_cd",
+                    (args.hsp_id, args.dtl_grp),
+                )
+            rows = cur.fetchall()
+            cur.close()
+            print(f"\n=== dtl_mst: hsp_id={args.hsp_id}, grp_cd={args.dtl_grp} ===")
+            if not rows:
+                print("[정보] 행 없음")
+            for r in rows:
+                print(f"- dtl_cd={r[0]}")
+                print(f"    dtl_cd_nm={r[1]!r} | dtl_expl={r[2]!r} | seq={r[3]} | use_yn={r[4]}")
+        finally:
+            conn.close()
+        return
+
     # prod 안전장치: 운영 환경은 조회(--query) 전용, 쓰기 작업 차단
     if args.env == "prod":
         print("[차단] prod 환경은 조회 전용입니다. (--query 만 허용)")
         print("       운영 DB INSERT/UPDATE는 DataGrip 등에서 직접 수행하세요.")
         sys.exit(1)
+
+    # 인사말(헤더) 버튼 링크 INSERT (dtl_mst)
+    if args.insert_links:
+        if not args.hsp_id or grp_cd not in HEADER_LINK_CODES:
+            print("[오류] --insert-links 사용 시 --hsp-id 와 헤더 지원 --grp-cd "
+                  "(HSPTLZ_LIVING_GUIDE / HSPTZ_LIVING_SAFETY_MANAGEMENT / CONVENIENCE_UTILITY) 가 필요합니다.")
+            sys.exit(1)
+        if not args.detail_url and not args.youtube_url:
+            print("[오류] --detail-url 또는 --youtube-url 중 하나 이상이 필요합니다.")
+            sys.exit(1)
+        sqls = build_link_sqls(args.hsp_id, grp_cd, args.detail_url, args.youtube_url)
+        print(f"\n[{label}] 인사말(헤더) 버튼 링크 → dtl_mst (hsp_id={args.hsp_id})\n")
+        print("=== 생성된 SQL ===")
+        for dtl_cd, sql in sqls:
+            print(f"\n-- {dtl_cd}")
+            print(sql)
+        print()
+        if args.dry_run:
+            print("[dry-run] SQL 미리보기만 출력했습니다. 실제 INSERT 없음.")
+            return
+        db_config = load_db_config(args.env)
+        try:
+            conn = pymysql.connect(**db_config)
+        except Exception as e:
+            print(f"[오류] DB 연결 실패: {e}")
+            sys.exit(1)
+        try:
+            existing = check_existing_links(conn, args.hsp_id, grp_cd, [c for c, _ in sqls])
+            if existing:
+                print(f"⚠️  기존 데이터 발견: hsp_id={args.hsp_id}, dtl_cd={existing}")
+                print("    중복 INSERT 시 Primary Key 오류가 발생합니다. DataGrip에서 삭제 후 재실행하세요.")
+                sys.exit(1)
+            cursor = conn.cursor()
+            n = 0
+            for _, sql in sqls:
+                cursor.execute(sql)
+                n += 1
+            conn.commit()
+            print(f"✅ dtl_mst INSERT 완료: {n}건")
+        except Exception as e:
+            conn.rollback()
+            print(f"[오류] INSERT 실패 (롤백 완료): {e}")
+            sys.exit(1)
+        finally:
+            conn.close()
+        return
+
+    # dtl_mst 기존 행의 dtl_expl UPDATE (헤더 버튼 URL 등)
+    if args.update_dtl:
+        if not args.hsp_id or not args.dtl_grp or not args.dtl_code or args.dtl_expl is None:
+            print("[오류] --update-dtl 사용 시 --hsp-id, --dtl-grp, --dtl-code, --dtl-expl 가 필요합니다.")
+            sys.exit(1)
+        print(f"\n[UPDATE] dtl_mst.dtl_expl : hsp_id={args.hsp_id}, grp_cd={args.dtl_grp}, dtl_cd={args.dtl_code}")
+        print(f"  → dtl_expl = {args.dtl_expl!r}")
+        if args.dry_run:
+            print("[dry-run] UPDATE 미실행.")
+            return
+        db_config = load_db_config(args.env)
+        try:
+            conn = pymysql.connect(**db_config)
+        except Exception as e:
+            print(f"[오류] DB 연결 실패: {e}")
+            sys.exit(1)
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE dtl_mst SET dtl_expl=%s, lst_mdf_dtm=NOW(), lst_mdf_id=0 "
+                "WHERE hsp_id=%s AND grp_cd=%s AND dtl_cd=%s",
+                (args.dtl_expl, args.hsp_id, args.dtl_grp, args.dtl_code),
+            )
+            n = cur.rowcount
+            cur.close()
+            conn.commit()
+            print(f"✅ UPDATE 완료: {n}행")
+        except Exception as e:
+            conn.rollback()
+            print(f"[오류] UPDATE 실패 (롤백 완료): {e}")
+            sys.exit(1)
+        finally:
+            conn.close()
+        return
+
+    # 카드 버튼 삭제 (hsp_guid_mst_dtl) — 잘못 들어간 버튼 정정용
+    if args.delete_button:
+        if not args.hsp_id or not args.guid_cd:
+            print("[오류] --delete-button 사용 시 --hsp-id 와 --guid-cd 가 필요합니다.")
+            sys.exit(1)
+        print(f"\n[삭제] hsp_guid_mst_dtl: hsp_id={args.hsp_id}, grp_cd={grp_cd}, "
+              f"guid_cd={args.guid_cd}, guid_dtl_cd={args.dtl_cd}")
+        if args.dry_run:
+            print("[dry-run] 삭제 미실행.")
+            return
+        db_config = load_db_config(args.env)
+        try:
+            conn = pymysql.connect(**db_config)
+        except Exception as e:
+            print(f"[오류] DB 연결 실패: {e}")
+            sys.exit(1)
+        try:
+            n = delete_card_button(conn, args.hsp_id, grp_cd, args.guid_cd, args.dtl_cd)
+            conn.commit()
+            print(f"✅ 삭제 완료: {n}행")
+        except Exception as e:
+            conn.rollback()
+            print(f"[오류] 삭제 실패 (롤백 완료): {e}")
+            sys.exit(1)
+        finally:
+            conn.close()
+        return
 
     # 데이터 소스 로딩 (엑셀 or 구글 시트)
     rows = load_data_source(args.excel_path)

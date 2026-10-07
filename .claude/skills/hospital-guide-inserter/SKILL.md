@@ -324,8 +324,13 @@ python3 .../insert_guide.py /tmp/x.tsv --grp-cd ... --env prod   # → [차단] 
 
 - `guid_cd = {GRP_CD}_BCARD_01` ~ `0N` (카드 순서)
 - `use_yn = Y`, `fsr_id = lst_mdf_id = 0`
-- 카드 열: C~L (최대 10장), 3행 블록 구조 (내용행/버튼행/글자수행)
+- 3행 블록 구조 (내용행/버튼행/글자수행). **컬럼 구조는 grp_cd별로 다름** — 상세는 `references/schema.md`:
+  - 입원생활/편의시설/안전생활: A=병원명, B=버튼1(상세 보기), C=버튼2(안내 영상 보기), **D열부터 카드**
+  - 퇴원 안내: A=병원명, B=버튼1, **C열부터 카드**
+- **B·C 헤더 버튼(상세/영상)은 카드가 아니라 `dtl_mst`** 에 저장 → `--insert-links` (카드 매핑 아님, 혼동 주의)
+- 카드 최대 **30장** (캐러셀 10 × outputs 3). 파서가 D/C열부터 최대 30장 파싱
 - 버튼 타입: `W`=웹 링크, `B`=블록 호출(블록ID 필요), `M`=사용자 발화
+- `--query-links` / `--insert-links` / `--delete-button` : 헤더 버튼(dtl_mst) 조회·삽입 및 카드 버튼 삭제
 - 중복 데이터(동일 hsp_id+guid_cd) 있으면 INSERT 중단 및 경고
 
 상세 필드 매핑 → `references/schema.md`
